@@ -123,7 +123,7 @@
     },
     {
       "name": "metadata_core",
-      "rootUri": "file:///Users/dineshv/.pub-cache/hosted/pub.dev/metadata_core-0.0.1",
+      "rootUri": "../../metadata_core",
       "packageUri": "lib/",
       "languageVersion": "3.0"
     },

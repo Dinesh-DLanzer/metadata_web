@@ -158,11 +158,10 @@ packages:
   metadata_core:
     dependency: "direct main"
     description:
-      name: metadata_core
-      sha256: b5abc14749390b81f63245f7813777c89319d24b5efe285ded48d66c5a57b178
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.0.1"
+      path: "../metadata_core"
+      relative: true
+    source: path
+    version: "0.0.3"
   path:
     dependency: transitive
     description:

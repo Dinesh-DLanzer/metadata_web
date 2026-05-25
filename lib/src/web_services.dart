@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:js_interop';
 import 'package:web/web.dart' as web;
 import 'package:metadata_core/metadata_core.dart';
-import 'package:metadata_core/src/extractors/exif_extractor.dart';
 import 'package:flutter/foundation.dart';
 
 // Native extension to support deep folder traversal
@@ -69,13 +68,24 @@ class WebFileScanner implements IFileScanner {
       }
 
       MetadataResult? metadata;
+      String? thumbnailPath;
       final bool isImage = file.type.startsWith('image/') || _isImageExtension(name);
+      final bool isVideo = _getProperty(file, 'type')?.startsWith('video/') ?? false;
       
       if (file is web.File && isImage) {
         try {
           final arrayBuffer = await file.arrayBuffer().toDart;
           final bytes = arrayBuffer.toDart.asUint8List();
           metadata = await ExifMetadataExtractor.extractFromBytes(processed.toString(), bytes);
+          
+          final thumbBytes = await ExifMetadataExtractor.extractThumbnailBytes(bytes);
+          if (thumbBytes != null && thumbBytes.isNotEmpty) {
+            try {
+              final uint8List = Uint8List.fromList(thumbBytes);
+              final blob = web.Blob([uint8List.toJS].toJS);
+              thumbnailPath = web.URL.createObjectURL(blob);
+            } catch (_) {}
+          }
           
           // Fallback dimensions logic
           if (metadata.imageMetadata?.width == null) {
@@ -107,6 +117,56 @@ class WebFileScanner implements IFileScanner {
         }
       }
 
+      if (file is web.File && isVideo) {
+        try {
+          final completer = Completer<String?>();
+          final video = web.document.createElement('video') as web.HTMLVideoElement;
+          video.muted = true;
+          video.preload = 'metadata';
+          video.playsInline = true;
+          final blob = web.Blob([file].toJS);
+          final url = web.URL.createObjectURL(blob);
+          video.src = url;
+
+          video.onloadeddata = (web.Event e) {
+            if (video.duration > 1.0) {
+              video.currentTime = 1.0;
+            } else {
+              video.currentTime = 0.0;
+            }
+          }.toJS;
+
+          video.onseeked = (web.Event e) {
+            try {
+              final canvas = web.document.createElement('canvas') as web.HTMLCanvasElement;
+              canvas.width = video.videoWidth;
+              canvas.height = video.videoHeight;
+              final ctx = canvas.getContext('2d') as web.CanvasRenderingContext2D?;
+              if (ctx != null) {
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                completer.complete(canvas.toDataURL('image/jpeg', 0.7.toJS));
+              } else {
+                completer.complete(null);
+              }
+            } catch (_) {
+              completer.complete(null);
+            } finally {
+              web.URL.revokeObjectURL(url);
+            }
+          }.toJS;
+
+          video.onerror = (JSAny e, JSAny f) {
+            completer.complete(null);
+            web.URL.revokeObjectURL(url);
+          }.toJS;
+
+          thumbnailPath = await completer.future.timeout(const Duration(seconds: 2), onTimeout: () {
+            web.URL.revokeObjectURL(url);
+            return null;
+          });
+        } catch (_) {}
+      }
+
       String objectUrl = '';
       if (file is web.File) {
         try {
@@ -118,7 +178,8 @@ class WebFileScanner implements IFileScanner {
       final mediaFile = MediaFile(
         id: processed.toString(),
         fileName: name,
-        path: objectUrl, 
+        path: objectUrl,
+        thumbnailPath: thumbnailPath,
         relativePath: relativePath,
         size: size,
         mimeType: _getProperty(file, 'type') ?? 'image/jpeg',

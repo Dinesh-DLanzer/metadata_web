@@ -1,6 +1,7 @@
 name: metadata_web
 description: A powerful web-specific metadata extraction implementation for Flutter, seamlessly integrating with web browsers to extract EXIF and media data.
 version: 0.0.1
+publish_to: 'none'
 repository: https://github.com/Dinesh-DLanzer/metadata_web
 issue_tracker: https://github.com/Dinesh-DLanzer/metadata_web/issues
 
@@ -10,7 +11,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  metadata_core: ^0.0.1
+  metadata_core:
+    path: ../metadata_core
   js: ^0.6.7
   web: ^1.0.0
   exif: ^3.3.0
