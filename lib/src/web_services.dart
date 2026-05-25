@@ -4,47 +4,71 @@ import 'package:web/web.dart' as web;
 import 'package:metadata_core/metadata_core.dart';
 import 'package:flutter/foundation.dart';
 
-// Native extension to support deep folder traversal
+/// Native extension to support deep folder traversal on [web.DataTransferItem].
 extension DataTransferItemExtension on web.DataTransferItem {
+  /// Gets a [JSObject] representing the file system entry for this item.
   @JS('webkitGetAsEntry')
   external JSObject? webkitGetAsEntry();
 }
 
+/// Helper extension on [JSObject] representing a FileSystemEntry.
 extension FileSystemEntryExtension on JSObject {
+  /// Checks if the entry is a file.
   @JS('isFile')
   external bool get isFile;
 
+  /// Checks if the entry is a directory.
   @JS('isDirectory')
   external bool get isDirectory;
 
+  /// The full path of the entry relative to the root.
   @JS('fullPath')
   external String get fullPath;
 
+  /// Creates a reader to read entries in the directory.
   @JS('createReader')
   external JSObject createReader();
 
+  /// Gets the file corresponding to this entry.
   @JS('file')
   external void file(JSFunction success, JSFunction error);
 }
 
+/// Helper extension on [JSObject] representing a DirectoryReader.
 extension DirectoryReaderExtension on JSObject {
+  /// Reads directory entries.
   @JS('readEntries')
   external void readEntries(JSFunction success, JSFunction error);
 }
 
-// Wrapper to safely pass file + metadata without modifying native JS objects
+/// Wrapper to safely pass file + metadata without modifying native JS objects.
 class WebFileWithMetadata {
+  /// The underlying web file.
   final web.File file;
+
+  /// The full file path of the item.
   final String fullPath;
+
+  /// Creates a [WebFileWithMetadata] wrapping a [file] and its [fullPath].
   WebFileWithMetadata(this.file, this.fullPath);
 }
 
+/// A web-specific implementation of [IFileScanner] that scans files
+/// selected or dropped in the web browser and extracts their metadata.
 class WebFileScanner implements IFileScanner {
+  /// Scans a direct path.
+  ///
+  /// Note: Direct path scanning is not supported on the web.
   @override
   Stream<ScanProgress> scan(String path, {bool recursive = true}) async* {
-    yield ScanProgress(totalFiles: 0, processedFiles: 0, status: 'Direct path scanning not supported on Web');
+    yield ScanProgress(
+        totalFiles: 0,
+        processedFiles: 0,
+        status: 'Direct path scanning not supported on Web');
   }
 
+  /// Scans a list of [files] (either [web.File] or [WebFileWithMetadata])
+  /// and emits progress and metadata results.
   @override
   Stream<ScanProgress> scanFiles(List<dynamic> files) async* {
     int total = files.length;
@@ -52,16 +76,18 @@ class WebFileScanner implements IFileScanner {
 
     for (var item in files) {
       processed++;
-      
+
       final dynamic file = item is WebFileWithMetadata ? item.file : item;
-      final String? customPath = item is WebFileWithMetadata ? item.fullPath : null;
+      final String? customPath =
+          item is WebFileWithMetadata ? item.fullPath : null;
 
       final String name = _getProperty(file, 'name') ?? 'unknown';
       final int size = _getProperty(file, 'size') ?? 0;
-      
+
       // Use customPath if available, otherwise fallback to webkitRelativePath
-      String relativePath = customPath ?? _getProperty(file, 'webkitRelativePath') ?? name;
-      
+      String relativePath =
+          customPath ?? _getProperty(file, 'webkitRelativePath') ?? name;
+
       // Strip leading slash from fullPath if present
       if (relativePath.startsWith('/')) {
         relativePath = relativePath.substring(1);
@@ -69,16 +95,20 @@ class WebFileScanner implements IFileScanner {
 
       MetadataResult? metadata;
       String? thumbnailPath;
-      final bool isImage = file.type.startsWith('image/') || _isImageExtension(name);
-      final bool isVideo = _getProperty(file, 'type')?.startsWith('video/') ?? false;
-      
+      final bool isImage =
+          file.type.startsWith('image/') || _isImageExtension(name);
+      final bool isVideo =
+          _getProperty(file, 'type')?.startsWith('video/') ?? false;
+
       if (file is web.File && isImage) {
         try {
           final arrayBuffer = await file.arrayBuffer().toDart;
           final bytes = arrayBuffer.toDart.asUint8List();
-          metadata = await ExifMetadataExtractor.extractFromBytes(processed.toString(), bytes);
-          
-          final thumbBytes = await ExifMetadataExtractor.extractThumbnailBytes(bytes);
+          metadata = await ExifMetadataExtractor.extractFromBytes(
+              processed.toString(), bytes);
+
+          final thumbBytes =
+              await ExifMetadataExtractor.extractThumbnailBytes(bytes);
           if (thumbBytes != null && thumbBytes.isNotEmpty) {
             try {
               final uint8List = Uint8List.fromList(thumbBytes);
@@ -86,11 +116,12 @@ class WebFileScanner implements IFileScanner {
               thumbnailPath = web.URL.createObjectURL(blob);
             } catch (_) {}
           }
-          
+
           // Fallback dimensions logic
           if (metadata.imageMetadata?.width == null) {
             final completer = Completer<web.HTMLImageElement>();
-            final img = web.document.createElement('img') as web.HTMLImageElement;
+            final img =
+                web.document.createElement('img') as web.HTMLImageElement;
             final blob = web.Blob([file].toJS);
             final url = web.URL.createObjectURL(blob);
             img.src = url;
@@ -101,11 +132,13 @@ class WebFileScanner implements IFileScanner {
             img.onerror = (JSAny e, JSAny f) {
               completer.completeError('Failed to load image for dimensions');
             }.toJS;
-            
+
             try {
-              final loadedImg = await completer.future.timeout(const Duration(milliseconds: 500));
+              final loadedImg = await completer.future
+                  .timeout(const Duration(milliseconds: 500));
               metadata = metadata.copyWith(
-                imageMetadata: (metadata.imageMetadata ?? const ImageMetadata()).copyWith(
+                imageMetadata:
+                    (metadata.imageMetadata ?? const ImageMetadata()).copyWith(
                   width: loadedImg.naturalWidth,
                   height: loadedImg.naturalHeight,
                 ),
@@ -120,7 +153,8 @@ class WebFileScanner implements IFileScanner {
       if (file is web.File && isVideo) {
         try {
           final completer = Completer<String?>();
-          final video = web.document.createElement('video') as web.HTMLVideoElement;
+          final video =
+              web.document.createElement('video') as web.HTMLVideoElement;
           video.muted = true;
           video.preload = 'metadata';
           video.playsInline = true;
@@ -138,10 +172,12 @@ class WebFileScanner implements IFileScanner {
 
           video.onseeked = (web.Event e) {
             try {
-              final canvas = web.document.createElement('canvas') as web.HTMLCanvasElement;
+              final canvas =
+                  web.document.createElement('canvas') as web.HTMLCanvasElement;
               canvas.width = video.videoWidth;
               canvas.height = video.videoHeight;
-              final ctx = canvas.getContext('2d') as web.CanvasRenderingContext2D?;
+              final ctx =
+                  canvas.getContext('2d') as web.CanvasRenderingContext2D?;
               if (ctx != null) {
                 ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
                 completer.complete(canvas.toDataURL('image/jpeg', 0.7.toJS));
@@ -160,7 +196,8 @@ class WebFileScanner implements IFileScanner {
             web.URL.revokeObjectURL(url);
           }.toJS;
 
-          thumbnailPath = await completer.future.timeout(const Duration(seconds: 2), onTimeout: () {
+          thumbnailPath = await completer.future
+              .timeout(const Duration(seconds: 2), onTimeout: () {
             web.URL.revokeObjectURL(url);
             return null;
           });
@@ -195,7 +232,8 @@ class WebFileScanner implements IFileScanner {
         status: 'Processing: ${mediaFile.fileName}',
       );
     }
-    yield ScanProgress(totalFiles: total, processedFiles: processed, status: 'Complete');
+    yield ScanProgress(
+        totalFiles: total, processedFiles: processed, status: 'Complete');
   }
 
   dynamic _getProperty(dynamic obj, String prop) {
@@ -206,13 +244,13 @@ class WebFileScanner implements IFileScanner {
         if (prop == 'type') return obj.type;
         if (prop == 'webkitRelativePath') return obj.webkitRelativePath;
       }
-      
+
       final dynamic dObj = obj;
       if (prop == 'name') return dObj.name;
       if (prop == 'size') return dObj.size;
       if (prop == 'type') return dObj.mimeType ?? dObj.type;
       if (prop == 'path') return dObj.path;
-      
+
       return null;
     } catch (e) {
       return null;
@@ -221,32 +259,38 @@ class WebFileScanner implements IFileScanner {
 
   bool _isImageExtension(String name) {
     final lower = name.toLowerCase();
-    return lower.endsWith('.jpg') || 
-           lower.endsWith('.jpeg') || 
-           lower.endsWith('.png') || 
-           lower.endsWith('.webp') || 
-           lower.endsWith('.heic') || 
-           lower.endsWith('.heif');
+    return lower.endsWith('.jpg') ||
+        lower.endsWith('.jpeg') ||
+        lower.endsWith('.png') ||
+        lower.endsWith('.webp') ||
+        lower.endsWith('.heic') ||
+        lower.endsWith('.heif');
   }
 }
 
+/// A web-specific implementation of [IStorageProvider] that provides
+/// metadata caching using IndexedDB (currently a stub implementation).
 class IndexedDBCache implements IStorageProvider {
+  /// Retrieves all cached metadata results.
   @override
   Future<List<MetadataResult>> getAllMetadata() async {
     return [];
   }
 
+  /// Retrieves cached metadata for a specific [fileId].
   @override
   Future<MetadataResult?> getMetadata(String fileId) async {
     return null;
   }
 
+  /// Saves [result] metadata to the cache.
   @override
-  Future<void> saveMetadata(MetadataResult result) async {
-  }
+  Future<void> saveMetadata(MetadataResult result) async {}
 }
 
+/// A utility class for picking folders via the browser's folder selector.
 class WebFolderPicker {
+  /// Opens the browser's directory picker and returns a list of files.
   static Future<List<dynamic>> pickFolder() async {
     final completer = Completer<List<dynamic>>();
     final input = web.document.createElement('input') as web.HTMLInputElement;
@@ -273,8 +317,13 @@ class WebFolderPicker {
   }
 }
 
+/// A utility class for traversing drag-and-drop file systems on the web,
+/// supporting nested folder structure traversal.
 class WebDropTraverser {
-  static Future<List<WebFileWithMetadata>> traverseDrop(web.DragEvent event) async {
+  /// Traverses files and folders from a drop [event] and returns
+  /// a flat list of [WebFileWithMetadata].
+  static Future<List<WebFileWithMetadata>> traverseDrop(
+      web.DragEvent event) async {
     final items = event.dataTransfer?.items;
     if (items == null) return [];
 
@@ -295,7 +344,8 @@ class WebDropTraverser {
     return files;
   }
 
-  static Future<void> _traverseEntry(JSObject entry, List<WebFileWithMetadata> files) async {
+  static Future<void> _traverseEntry(
+      JSObject entry, List<WebFileWithMetadata> files) async {
     if (entry.isFile) {
       final web.File file = await _getFileFromEntry(entry);
       // Store file and its full path in the wrapper
@@ -311,21 +361,25 @@ class WebDropTraverser {
 
   static Future<web.File> _getFileFromEntry(JSObject entry) {
     final completer = Completer<web.File>();
-    entry.file((web.File file) {
-      completer.complete(file);
-    }.toJS, (JSAny? err) {
-      completer.completeError(err ?? 'Unknown error');
-    }.toJS);
+    entry.file(
+        (web.File file) {
+          completer.complete(file);
+        }.toJS,
+        (JSAny? err) {
+          completer.completeError(err ?? 'Unknown error');
+        }.toJS);
     return completer.future;
   }
 
   static Future<List<dynamic>> _readEntries(JSObject reader) {
     final completer = Completer<List<dynamic>>();
-    (reader as dynamic).readEntries((JSArray entries) {
-      completer.complete(entries.toDart);
-    }.toJS, (JSAny? err) {
-      completer.completeError(err ?? 'Unknown error');
-    }.toJS);
+    (reader as dynamic).readEntries(
+        (JSArray entries) {
+          completer.complete(entries.toDart);
+        }.toJS,
+        (JSAny? err) {
+          completer.completeError(err ?? 'Unknown error');
+        }.toJS);
     return completer.future;
   }
 }
