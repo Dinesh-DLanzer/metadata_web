@@ -1,3 +1,8 @@
+## 0.0.4
+
+* Updated README with full API documentation: video thumbnail extraction, `WebFolderPicker`, `WebDropTraverser`, and example app reference.
+* Fixed `Getting started` version constraint in README (was showing `^0.0.1`).
+
 ## 0.0.3
 
 * Updated `metadata_core` dependency to `^0.0.5`.
