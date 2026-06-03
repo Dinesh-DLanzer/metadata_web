@@ -1,3 +1,8 @@
+## 0.0.3
+
+* Updated `metadata_core` dependency to `^0.0.5`.
+* Added example app demonstrating folder picking, drag-and-drop scanning, and video thumbnail extraction.
+
 ## 0.0.2
 
 * Migrated from discontinued `package:js` to modern `dart:js_interop` from the Dart SDK.
