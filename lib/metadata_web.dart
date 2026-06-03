@@ -2,4 +2,4 @@
 /// seamlessly integrating with web browsers to extract EXIF and media data.
 library metadata_web;
 
-export 'src/web_services.dart';
+export 'src/stub.dart' if (dart.library.js_interop) 'src/web_services.dart';

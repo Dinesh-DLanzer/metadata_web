@@ -1,3 +1,9 @@
+## 0.0.5
+
+* Added conditional export (`dart.library.js_interop`) so pana correctly detects platform support, fixing the pub.dev platform score (was 0/20).
+* Added non-web stubs for all public classes; they throw `UnsupportedError` at runtime on non-web platforms.
+* Updated `metadata_core` dependency to `^0.0.6` (eliminates `dart:io` from the transitive import chain on web).
+
 ## 0.0.4
 
 * Updated README with full API documentation: video thumbnail extraction, `WebFolderPicker`, `WebDropTraverser`, and example app reference.
